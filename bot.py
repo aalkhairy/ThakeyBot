@@ -1,128 +1,106 @@
-### config.py
-import os
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-DB_NAME = "tasks.db"
 
+import logging
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    CallbackQueryHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+    ConversationHandler,
+)
 
-### database.py
-import sqlite3
-from config import DB_NAME
+# إعدادات السجل
+logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 
-def init_db():
-    """Initialize the database and create tasks table if not exists."""
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS tasks (
-                    user_id INTEGER,
-                    task TEXT
-                )''')
-    conn.commit()
-    conn.close()
+# الحالات المستخدمة في ConversationHandler
+ADD_TODO, ADD_REMINDER = range(2)
 
-def add_task(user_id, task):
-    """Insert a new task for a specific user."""
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("INSERT INTO tasks (user_id, task) VALUES (?, ?)", (user_id, task))
-    conn.commit()
-    conn.close()
+# تخزين مؤقت للمهام والتذكيرات
+user_data_store = {}
 
-def get_tasks(user_id):
-    """Retrieve all tasks associated with a specific user."""
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("SELECT rowid, task FROM tasks WHERE user_id = ?", (user_id,))
-    results = c.fetchall()
-    conn.close()
-    return results
-
-def delete_task(user_id, task_id):
-    """Delete a task based on its ID and user."""
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("DELETE FROM tasks WHERE rowid = ? AND user_id = ?", (task_id, user_id))
-    conn.commit()
-    conn.close()
-
-
-### bot.py
-from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-from config import BOT_TOKEN
-from database import init_db, add_task, get_tasks, delete_task
-
-# Initialize the database
-init_db()
-
+# /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /start command and show the main menu."""
     keyboard = [
-        ["➕ إضافة مهمة", "📋 عرض المهام"],
-        ["✅ إنهاء مهمة"]
+        [InlineKeyboardButton("📋 مهامي", callback_data='todo')],
+        [InlineKeyboardButton("⏰ تذكير", callback_data='reminder')],
     ]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
+    reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
-        "👋 مرحبًا بك في *ذكي بوت*!\n"
-        "اختر أحد الأوامر من الأزرار بالأسفل 👇",
-        reply_markup=reply_markup,
-        parse_mode="Markdown"
+        "👋 مرحبًا بك في Thakey Assistant!
+اختر ما ترغب في فعله:",
+        reply_markup=reply_markup
     )
 
-async def list_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """List all current tasks for the user."""
-    tasks = get_tasks(update.effective_user.id)
-    if tasks:
-        reply = "📝 مهامك الحالية:\n"
-        for rowid, task in tasks:
-            reply += f"{rowid}. {task}\n"
+# التعامل مع الأزرار
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if query.data == 'todo':
+        await query.edit_message_text("📝 أرسل المهمة التي ترغب في إضافتها:")
+        return ADD_TODO
+    elif query.data == 'reminder':
+        await query.edit_message_text("⏰ أرسل الوقت الذي تريد أن أذكرك فيه (مثال: 10 دقائق):")
+        return ADD_REMINDER
+
+# استقبال مهمة
+async def add_todo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    task = update.message.text
+    user_data_store.setdefault(user_id, {}).setdefault("todos", []).append(task)
+    await update.message.reply_text(f"✅ تمت إضافة المهمة: {task}")
+    return ConversationHandler.END
+
+# استقبال تذكير (مؤقت بسيط)
+async def add_reminder(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    import asyncio
+
+    user_id = update.effective_user.id
+    time_text = update.message.text.lower()
+
+    minutes = 0
+    if 'دقيقة' in time_text:
+        minutes = int(''.join(filter(str.isdigit, time_text)))
+    elif 'min' in time_text or 'm' in time_text:
+        minutes = int(''.join(filter(str.isdigit, time_text)))
     else:
-        reply = "📭 لا توجد مهام حالياً."
-    await update.message.reply_text(reply)
+        await update.message.reply_text("❗️لم أفهم الوقت، الرجاء الإرسال مثل: 10 دقائق")
+        return ConversationHandler.END
 
-async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle button inputs and user interactions."""
-    text = update.message.text.strip()
+    await update.message.reply_text(f"⏳ سيتم تذكيرك خلال {minutes} دقيقة...")
 
-    if text == "➕ إضافة مهمة":
-        await update.message.reply_text("✏️ أرسل لي المهمة التي تريد إضافتها:")
-        context.user_data['adding'] = True
+    await asyncio.sleep(minutes * 60)
+    await context.bot.send_message(chat_id=user_id, text="🔔 هذا تذكيرك!")
 
-    elif text == "📋 عرض المهام":
-        await list_tasks(update, context)
+    return ConversationHandler.END
 
-    elif text == "✅ إنهاء مهمة":
-        await update.message.reply_text("🆔 أرسل رقم المهمة التي تريد حذفها:")
-        context.user_data['deleting'] = True
+# إلغاء
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("❌ تم الإلغاء.")
+    return ConversationHandler.END
 
-    elif context.user_data.get('adding'):
-        add_task(update.effective_user.id, text)
-        await update.message.reply_text(f"✅ تمت إضافة المهمة: {text}")
-        context.user_data['adding'] = False
+# إعداد التطبيق وتشغيله
+def main():
+    import os
+    TOKEN = os.getenv("BOT_TOKEN")  # ضع توكن البوت في متغير بيئة
 
-    elif context.user_data.get('deleting'):
-        if text.isdigit():
-            delete_task(update.effective_user.id, int(text))
-            await update.message.reply_text(f"🗑️ تم حذف المهمة رقم {text}")
-        else:
-            await update.message.reply_text("❗️يرجى إرسال رقم صحيح.")
-        context.user_data['deleting'] = False
+    app = ApplicationBuilder().token(TOKEN).build()
 
-if __name__ == '__main__':
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    conv_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(button_handler)],
+        states={
+            ADD_TODO: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_todo)],
+            ADD_REMINDER: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_reminder)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_buttons))
+    app.add_handler(conv_handler)
+
+    print("🤖 Bot is running...")
     app.run_polling()
 
-
-### requirements.txt
-python-telegram-bot==20.3
-
-
-### Procfile
-worker: python bot.py
-
-
-### .gitignore
-__pycache__/
-*.pyc
-tasks.db
+if __name__ == "__main__":
+    main()
