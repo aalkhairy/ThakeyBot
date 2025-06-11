@@ -1,2 +1,4 @@
-BOT_TOKEN = "7924983529:AAG4xH7HPWHNu03xRWB89nVMFnyUTlPhzXg"
+import os
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 DB_NAME = "tasks.db"
