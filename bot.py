@@ -29,7 +29,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
-    "👋 أهلاً بك في Thakey Assistant!\nاختر ما ترغب في فعله:",
+    "👋 أهلاً بك  أنا ذكي بوت \nاختر ما ترغب في فعله:",
     reply_markup=reply_markup
 )
 
