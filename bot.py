@@ -1,5 +1,6 @@
 
 import logging
+import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
@@ -11,13 +12,13 @@ from telegram.ext import (
     ConversationHandler,
 )
 
-# إعدادات السجل
+# إعداد السجل
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 
-# الحالات المستخدمة في ConversationHandler
+# الحالات
 ADD_TODO, ADD_REMINDER = range(2)
 
-# تخزين مؤقت للمهام والتذكيرات
+# تخزين مؤقت
 user_data_store = {}
 
 # /start
@@ -28,10 +29,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
-        "👋 مرحبًا بك في Thakey Assistant!
-اختر ما ترغب في فعله:",
-        reply_markup=reply_markup
-    )
+    "👋 أهلاً بك في Thakey Assistant!\nاختر ما ترغب في فعله:",
+    reply_markup=reply_markup
+)
 
 # التعامل مع الأزرار
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -44,7 +44,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("⏰ أرسل الوقت الذي تريد أن أذكرك فيه (مثال: 10 دقائق):")
         return ADD_REMINDER
 
-# استقبال مهمة
+# إضافة مهمة
 async def add_todo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     task = update.message.text
@@ -52,10 +52,8 @@ async def add_todo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"✅ تمت إضافة المهمة: {task}")
     return ConversationHandler.END
 
-# استقبال تذكير (مؤقت بسيط)
+# إضافة تذكير
 async def add_reminder(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    import asyncio
-
     user_id = update.effective_user.id
     time_text = update.message.text.lower()
 
@@ -69,7 +67,6 @@ async def add_reminder(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     await update.message.reply_text(f"⏳ سيتم تذكيرك خلال {minutes} دقيقة...")
-
     await asyncio.sleep(minutes * 60)
     await context.bot.send_message(chat_id=user_id, text="🔔 هذا تذكيرك!")
 
@@ -80,10 +77,10 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("❌ تم الإلغاء.")
     return ConversationHandler.END
 
-# إعداد التطبيق وتشغيله
+# تشغيل البوت
 def main():
     import os
-    TOKEN = os.getenv("BOT_TOKEN")  # ضع توكن البوت في متغير بيئة
+    TOKEN = os.getenv("BOT_TOKEN")
 
     app = ApplicationBuilder().token(TOKEN).build()
 
